@@ -43,7 +43,6 @@ import {
 } from './Iterator';
 
 import assertNotInfinite from './utils/assertNotInfinite';
-import coerceKeyPath from './utils/coerceKeyPath';
 import deepEqual from './utils/deepEqual';
 import mixin from './utils/mixin';
 import quoteString from './utils/quoteString';
@@ -80,6 +79,9 @@ import {
   maxFactory,
   zipWithFactory
 } from './Operations';
+import getIn from './methods/getIn';
+import hasIn from './methods/hasIn';
+import toObject from './methods/toObject';
 
 export {
   Collection,
@@ -131,14 +133,7 @@ mixin(Collection, {
     return Map(this.toKeyedSeq());
   },
 
-  toObject() {
-    assertNotInfinite(this.size);
-    const object = {};
-    this.__iterate((v, k) => {
-      object[k] = v;
-    });
-    return object;
-  },
+  toObject: toObject,
 
   toOrderedMap() {
     // Use Late Binding here to solve the circular dependency.
@@ -401,9 +396,7 @@ mixin(Collection, {
     return this.find((_, key) => is(key, searchKey), undefined, notSetValue);
   },
 
-  getIn(searchKeyPath, notSetValue) {
-    return getIn(this, notSetValue, searchKeyPath, true /* report bad path */);
-  },
+  getIn: getIn,
 
   groupBy(grouper, context) {
     return groupByFactory(this, grouper, context);
@@ -413,12 +406,7 @@ mixin(Collection, {
     return this.get(searchKey, NOT_SET) !== NOT_SET;
   },
 
-  hasIn(searchKeyPath) {
-    return (
-      getIn(this, NOT_SET, searchKeyPath, false /* report bad path */) !==
-      NOT_SET
-    );
-  },
+  hasIn: hasIn,
 
   isSubset(iter) {
     iter = typeof iter.includes === 'function' ? iter : Collection(iter);
@@ -578,7 +566,7 @@ mixin(KeyedCollection, {
 const KeyedCollectionPrototype = KeyedCollection.prototype;
 KeyedCollectionPrototype[IS_KEYED_SENTINEL] = true;
 KeyedCollectionPrototype[ITERATOR_SYMBOL] = CollectionPrototype.entries;
-KeyedCollectionPrototype.toJSON = CollectionPrototype.toObject;
+KeyedCollectionPrototype.toJSON = toObject;
 KeyedCollectionPrototype.__toStringMapper = (v, k) =>
   quoteString(k) + ': ' + quoteString(v);
 
@@ -827,42 +815,4 @@ function murmurHashOfSize(size, h) {
 
 function hashMerge(a, b) {
   return (a ^ (b + 0x9e3779b9 + (a << 6) + (a >> 2))) | 0; // int
-}
-
-function warn(message) {
-  /* eslint-disable no-console */
-  if (typeof console === 'object' && console.warn) {
-    console.warn(message);
-  } else {
-    throw new Error(message);
-  }
-  /* eslint-enable no-console */
-}
-
-function getIn(value, notSetValue, searchKeyPath, reportBadKeyPath) {
-  const keyPath = coerceKeyPath(searchKeyPath);
-  let i = 0;
-  while (i !== keyPath.length) {
-    // Intermediate null/undefined value along path
-    if (value == null) {
-      return notSetValue;
-    }
-    if (!value || !value.get) {
-      if (reportBadKeyPath) {
-        warn(
-          'Invalid keyPath: Value at [' +
-            keyPath.slice(0, i).map(quoteString) +
-            '] does not have a .get() method: ' +
-            value +
-            '\nThis warning will throw in a future version'
-        );
-      }
-      return notSetValue;
-    }
-    value = value.get(keyPath[i++], NOT_SET);
-    if (value === NOT_SET) {
-      return notSetValue;
-    }
-  }
-  return value;
 }
